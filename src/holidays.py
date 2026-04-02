@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import ART
@@ -83,3 +83,27 @@ async def should_enforce_tonight() -> tuple[bool, bool]:
         return False, scrape_failed
 
     return True, scrape_failed
+
+
+async def next_enforcement_datetime() -> datetime:
+    """
+    Returns the next datetime (ART) when the sweep will fire.
+    Walks forward from the next upcoming 1 AM slot until it finds a
+    weekday that isn't a public holiday.
+    """
+    now = datetime.now(ART)
+
+    # Start at tonight's 1 AM; if we're already past it, start tomorrow.
+    candidate = now.replace(hour=1, minute=0, second=0, microsecond=0)
+    if now >= candidate:
+        candidate += timedelta(days=1)
+
+    for _ in range(14):  # cap at 2 weeks to avoid an infinite loop
+        d = candidate.date()
+        if d.weekday() < 5:  # Mon–Fri
+            holidays, _ = await fetch_argentina_holidays(d.year)
+            if (d.month, d.day) not in holidays:
+                return candidate
+        candidate += timedelta(days=1)
+
+    return candidate  # fallback: return whatever we landed on

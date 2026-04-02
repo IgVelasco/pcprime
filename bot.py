@@ -8,7 +8,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from src.config import TOKEN, ANNOUNCE_CHANNEL_ID, GUILD_ID, ART, log
-from src.holidays import should_enforce_tonight
+from src.holidays import should_enforce_tonight, next_enforcement_datetime
 from src.messages import SWEEP_MESSAGES, GUARD_MESSAGES
 
 # ── Bot & scheduler ───────────────────────────────────────────────────────────
@@ -164,6 +164,42 @@ async def on_voice_state_update(
         return
 
     await send_announcement(member.guild, random.choice(GUARD_MESSAGES))
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+_DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MONTHS_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+@bot.event
+async def on_message(message: discord.Message) -> None:
+    if message.author.bot:
+        return
+
+    content = message.content.strip().lower()
+    bot_mentioned = bot.user in message.mentions
+
+    if content == "$p":
+        await message.channel.send("$pelotudo")
+        return
+
+    is_next_command = content.startswith("$next") or bot_mentioned
+
+    if not is_next_command:
+        return
+
+    next_dt = await next_enforcement_datetime()
+    day_name = _DAYS_ES[next_dt.weekday()]
+    month_name = _MONTHS_ES[next_dt.month - 1]
+    response = (
+        f"La próxima patada es el **{day_name} {next_dt.day} de {month_name}** a la **01:00 AM**. "
+        f"Aprovechen hasta entonces."
+    )
+    await message.channel.send(response)
 
 
 # ── Bot lifecycle ─────────────────────────────────────────────────────────────

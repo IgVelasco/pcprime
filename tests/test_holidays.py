@@ -5,16 +5,17 @@ Covers:
 - _load_holidays_from_file: valid data, missing year, corrupt file, missing file
 - fetch_argentina_holidays: successful scrape, HTTP failure with fallback, scrape failure flag
 - should_enforce_tonight: weekend skip, holiday skip, normal weekday enforcement
+- next_enforcement_datetime: skips weekends, skips holidays, finds next valid slot
 """
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import src.holidays as holidays_module
-from src.holidays import _load_holidays_from_file, should_enforce_tonight
+from src.holidays import _load_holidays_from_file, next_enforcement_datetime, should_enforce_tonight
 
 
 # ── _load_holidays_from_file ──────────────────────────────────────────────────
@@ -193,3 +194,56 @@ async def test_scrape_failed_flag_propagates():
         enforce, scrape_failed = await should_enforce_tonight()
     assert enforce is True
     assert scrape_failed is True
+
+
+# ── next_enforcement_datetime ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_next_enforcement_is_tonight_before_1am():
+    """If it's before 1 AM on a valid weekday, next kick is tonight."""
+    # Wednesday 2026-04-08 at 22:00 ART — next slot is Thu 09 at 01:00
+    # (Wed night → Thu morning, so we check Thursday)
+    from src.config import ART
+    now = datetime(2026, 4, 8, 22, 0, 0, tzinfo=ART)
+    with patch("src.holidays.datetime") as mock_dt, \
+         patch("src.holidays.fetch_argentina_holidays", new_callable=AsyncMock) as mock_fetch:
+        mock_dt.now.return_value = now
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        mock_fetch.return_value = (set(), False)
+        result = await next_enforcement_datetime()
+    assert result.day == 9
+    assert result.month == 4
+    assert result.hour == 1
+
+
+@pytest.mark.asyncio
+async def test_next_enforcement_skips_weekend():
+    """A Friday night should skip Saturday and Sunday, landing on Monday."""
+    from src.config import ART
+    # Friday 2026-04-10 at 22:00 — next valid slot is Monday 13 at 01:00
+    now = datetime(2026, 4, 10, 22, 0, 0, tzinfo=ART)
+    with patch("src.holidays.datetime") as mock_dt, \
+         patch("src.holidays.fetch_argentina_holidays", new_callable=AsyncMock) as mock_fetch:
+        mock_dt.now.return_value = now
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        mock_fetch.return_value = (set(), False)
+        result = await next_enforcement_datetime()
+    assert result.weekday() == 0  # Monday
+    assert result.day == 13
+
+
+@pytest.mark.asyncio
+async def test_next_enforcement_skips_holiday():
+    """Should skip over a public holiday and return the next valid day."""
+    from src.config import ART
+    # Monday 2026-05-25 (Revolución de Mayo) at 22:00 — should skip to Tuesday
+    now = datetime(2026, 5, 25, 22, 0, 0, tzinfo=ART)
+    holidays = {(5, 26)}  # pretend Tue is also a holiday, so we skip to Wed
+    with patch("src.holidays.datetime") as mock_dt, \
+         patch("src.holidays.fetch_argentina_holidays", new_callable=AsyncMock) as mock_fetch:
+        mock_dt.now.return_value = now
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        mock_fetch.return_value = (holidays, False)
+        result = await next_enforcement_datetime()
+    assert result.day == 27  # Wednesday
+    assert result.month == 5

@@ -7,9 +7,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
-from config import TOKEN, ANNOUNCE_CHANNEL_ID, GUILD_ID, ART, log
-from holidays import should_enforce_tonight
-from messages import SWEEP_MESSAGES, GUARD_MESSAGES
+from src.config import TOKEN, ANNOUNCE_CHANNEL_ID, GUILD_ID, ART, log
+from src.holidays import should_enforce_tonight
+from src.messages import SWEEP_MESSAGES, GUARD_MESSAGES
 
 # ── Bot & scheduler ───────────────────────────────────────────────────────────
 

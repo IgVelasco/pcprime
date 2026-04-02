@@ -6,7 +6,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from config import ART
+from .config import ART
 
 log = logging.getLogger("PCPrime")
 

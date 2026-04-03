@@ -91,9 +91,13 @@ async def alert_scraping_failure() -> None:
 
 # ── The Sweep ─────────────────────────────────────────────────────────────────
 
-async def nightly_sweep() -> None:
+async def nightly_sweep(force: bool = False) -> None:
     """Disconnect every non-exempt user from every voice channel, then announce."""
-    enforce, scrape_failed = await should_enforce_tonight()
+    if force:
+        enforce = True
+        scrape_failed = False
+    else:
+        enforce, scrape_failed = await should_enforce_tonight()
 
     if scrape_failed:
         await alert_scraping_failure()
@@ -199,6 +203,13 @@ async def on_message(message: discord.Message) -> None:
         await message.channel.send("$pelotudo")
         return
 
+    if content == "$kick":
+        if message.author.name.lower() != "nach0ps":
+            await message.channel.send("Raja de aca, solo mi creador puede correr ese comando")
+            return
+        await nightly_sweep(force=True)
+        return
+
     is_next_command = content.startswith("$next") or bot_mentioned
 
     if not is_next_command:
@@ -228,6 +239,7 @@ async def on_ready() -> None:
             DateTrigger(run_date=run_at),
             id="nightly_sweep",
             replace_existing=True,
+            kwargs={"force": args.force},
         )
         log.info("TEST MODE: sweep will fire in %d seconds.", delay)
     else:
@@ -236,6 +248,7 @@ async def on_ready() -> None:
             CronTrigger(hour=1, minute=0, timezone=ART),
             id="nightly_sweep",
             replace_existing=True,
+            kwargs={"force": args.force},
         )
         log.info("Scheduler started. Sweep fires at 01:00 ART.")
 
@@ -252,6 +265,12 @@ if __name__ == "__main__":
         const=10,
         default=None,
         help="Trigger the nightly sweep after SECONDS seconds (default: 10). For testing only.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Run the sweep even on holidays.",
     )
     args = parser.parse_args()
 

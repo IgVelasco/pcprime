@@ -39,11 +39,22 @@ def is_nico(message: discord.Message) -> bool:
 
 def should_skip(member: discord.Member) -> bool:
     """Returns True for the bot itself and the server owner."""
-    if member.bot:
-        return True
-    if member.id == member.guild.owner_id:
-        return True
-    return False
+    return member.bot or member.id == member.guild.owner_id
+
+
+def get_target_guilds(guild: discord.Guild | None = None) -> list[discord.Guild]:
+    """Returns the list of guilds to act on: a specific one, or all configured guilds."""
+    if guild is not None:
+        return [guild]
+    guilds = [bot.get_guild(int(GUILD_ID))] if GUILD_ID else list(bot.guilds)
+    return [g for g in guilds if g is not None]
+
+
+async def check_enforcement(force: bool) -> tuple[bool, bool]:
+    """Returns (should_enforce, scrape_failed). If force=True, always enforces."""
+    if force:
+        return True, False
+    return await should_enforce_tonight()
 
 
 def resolve_announce_channel(guild: discord.Guild) -> discord.TextChannel | None:
@@ -83,9 +94,7 @@ async def send_announcement(guild: discord.Guild, message: str) -> None:
 
 
 async def alert_scraping_failure() -> None:
-    guilds = [bot.get_guild(int(GUILD_ID))] if GUILD_ID else list(bot.guilds)
-    guilds = [g for g in guilds if g is not None]
-    for guild in guilds:
+    for guild in get_target_guilds():
         await send_announcement(guild, "Che el scraping de feriados no funca, arreglenme vagos..")
 
 
@@ -93,11 +102,7 @@ async def alert_scraping_failure() -> None:
 
 async def nightly_sweep(force: bool = False, guild: discord.Guild | None = None) -> None:
     """Disconnect every non-exempt user from every voice channel, then announce."""
-    if force:
-        enforce = True
-        scrape_failed = False
-    else:
-        enforce, scrape_failed = await should_enforce_tonight()
+    enforce, scrape_failed = await check_enforcement(force)
 
     if scrape_failed:
         await alert_scraping_failure()
@@ -108,15 +113,9 @@ async def nightly_sweep(force: bool = False, guild: discord.Guild | None = None)
 
     log.info("Nightly sweep started.")
 
-    if guild is not None:
-        guilds = [guild]
-    else:
-        guilds = [bot.get_guild(int(GUILD_ID))] if GUILD_ID else list(bot.guilds)
-        guilds = [g for g in guilds if g is not None]
-
-    for guild in guilds:
+    for g in get_target_guilds(guild):
         kicked = 0
-        for vc in guild.voice_channels:
+        for vc in g.voice_channels:
             for member in list(vc.members):
                 if should_skip(member):
                     continue
@@ -132,7 +131,7 @@ async def nightly_sweep(force: bool = False, guild: discord.Guild | None = None)
         msg = random.choice(SWEEP_MESSAGES)
         if kicked > 0:
             msg += f" ({kicked} vago{'s' if kicked != 1 else ''} echado{'s' if kicked != 1 else ''})"
-        await send_announcement(guild, msg)
+        await send_announcement(g, msg)
 
     log.info("Nightly sweep complete.")
 
@@ -149,21 +148,15 @@ async def on_voice_state_update(
     joined_channel = after.channel is not None and (
         before.channel is None or before.channel.id != after.channel.id
     )
-    if not joined_channel:
+    if not joined_channel or not is_quiet_hours():
         return
 
-    if not is_quiet_hours():
-        return
-
-    enforce, scrape_failed = await should_enforce_tonight()
+    enforce, scrape_failed = await check_enforcement(force=False)
 
     if scrape_failed:
         await alert_scraping_failure()
 
-    if not enforce:
-        return
-
-    if should_skip(member):
+    if not enforce or should_skip(member):
         return
 
     log.info("Guard: disconnecting %s who joined %s", member.display_name, after.channel.name)
@@ -189,6 +182,35 @@ _MONTHS_ES = [
 ]
 
 
+async def cmd_nico(message: discord.Message) -> None:
+    nico = next(m for m in [message.author] + list(message.mentions) if m.name.lower() == "nico_1607")
+    suffix = " (PARALIZADO)"
+    base = nico.nick or nico.name
+    if not base.endswith(suffix):
+        try:
+            await nico.edit(nick=(base + suffix)[:32])
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            log.warning("Could not change nico's nickname: %s", exc)
+    await message.channel.send(f"# {nico.mention} _(PARALIZADO)_")
+
+
+async def cmd_kick(message: discord.Message) -> None:
+    if message.author.name.lower() != "nach0ps":
+        await message.channel.send("Raja de aca, solo mi creador puede correr ese comando")
+        return
+    await nightly_sweep(force=True, guild=message.guild)
+
+
+async def cmd_next(message: discord.Message) -> None:
+    next_dt = await next_enforcement_datetime()
+    day_name = _DAYS_ES[next_dt.weekday()]
+    month_name = _MONTHS_ES[next_dt.month - 1]
+    await message.channel.send(
+        f"La próxima patada es el **{day_name} {next_dt.day} de {month_name}** a la **01:00 AM**. "
+        f"Aprovechen hasta entonces."
+    )
+
+
 @bot.event
 async def on_message(message: discord.Message) -> None:
     if message.author.bot:
@@ -198,42 +220,13 @@ async def on_message(message: discord.Message) -> None:
     bot_mentioned = bot.user in message.mentions
 
     if is_nico(message):
-        nico = next(m for m in [message.author] + list(message.mentions) if m.name.lower() == "nico_1607")
-        suffix = " (PARALIZADO)"
-        base = nico.nick or nico.name
-        if not base.endswith(suffix):
-            new_nick = (base + suffix)[:32]
-            try:
-                await nico.edit(nick=new_nick)
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                log.warning("Could not change nico's nickname: %s", exc)
-        await message.channel.send(f"# {nico.mention} _(PARALIZADO)_")
-        return
-
-    if content == "$p":
+        await cmd_nico(message)
+    elif content == "$p":
         await message.channel.send("$pelotudo")
-        return
-
-    if content == "$kick":
-        if message.author.name.lower() != "nach0ps":
-            await message.channel.send("Raja de aca, solo mi creador puede correr ese comando")
-            return
-        await nightly_sweep(force=True, guild=message.guild)
-        return
-
-    is_next_command = content.startswith("$next") or bot_mentioned
-
-    if not is_next_command:
-        return
-
-    next_dt = await next_enforcement_datetime()
-    day_name = _DAYS_ES[next_dt.weekday()]
-    month_name = _MONTHS_ES[next_dt.month - 1]
-    response = (
-        f"La próxima patada es el **{day_name} {next_dt.day} de {month_name}** a la **01:00 AM**. "
-        f"Aprovechen hasta entonces."
-    )
-    await message.channel.send(response)
+    elif content == "$kick":
+        await cmd_kick(message)
+    elif content.startswith("$next") or bot_mentioned:
+        await cmd_next(message)
 
 
 # ── Bot lifecycle ─────────────────────────────────────────────────────────────

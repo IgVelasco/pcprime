@@ -184,13 +184,6 @@ _MONTHS_ES = [
 
 async def cmd_nico(message: discord.Message) -> None:
     nico = next(m for m in [message.author] + list(message.mentions) if m.name.lower() == "nico_1607")
-    suffix = " (PARALIZADO)"
-    base = nico.nick or nico.name
-    if not base.endswith(suffix):
-        try:
-            await nico.edit(nick=(base + suffix)[:32])
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            log.warning("Could not change nico's nickname: %s", exc)
     await message.channel.send(f"# {nico.mention} _(PARALIZADO)_")
 
 

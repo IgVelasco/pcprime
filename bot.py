@@ -187,6 +187,17 @@ async def on_message(message: discord.Message) -> None:
         await message.channel.send("$pelotudo")
         return
 
+    if content == "$vieja":
+        target = discord.utils.find(
+            lambda m: m.name.lower() == "mel8402",
+            message.guild.members,
+        )
+        if target:
+            await message.channel.send(f"{target.mention} Te hablan...")
+        else:
+            await message.channel.send("No encuentro a mel8402 en el server.")
+        return
+
     is_next_command = content.startswith("$next") or bot_mentioned
 
     if not is_next_command:

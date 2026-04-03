@@ -191,7 +191,8 @@ async def on_message(message: discord.Message) -> None:
     bot_mentioned = bot.user in message.mentions
 
     if is_nico(message):
-        await message.channel.send("_PARALIZADO_")
+        nico = next(m for m in [message.author] + list(message.mentions) if m.name.lower() == "nico_1607")
+        await message.channel.send(f"# {nico.mention} _(PARALIZADO)_")
         return
 
     if content == "$p":

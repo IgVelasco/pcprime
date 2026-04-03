@@ -91,7 +91,7 @@ async def alert_scraping_failure() -> None:
 
 # ── The Sweep ─────────────────────────────────────────────────────────────────
 
-async def nightly_sweep(force: bool = False) -> None:
+async def nightly_sweep(force: bool = False, guild: discord.Guild | None = None) -> None:
     """Disconnect every non-exempt user from every voice channel, then announce."""
     if force:
         enforce = True
@@ -108,8 +108,11 @@ async def nightly_sweep(force: bool = False) -> None:
 
     log.info("Nightly sweep started.")
 
-    guilds = [bot.get_guild(int(GUILD_ID))] if GUILD_ID else list(bot.guilds)
-    guilds = [g for g in guilds if g is not None]
+    if guild is not None:
+        guilds = [guild]
+    else:
+        guilds = [bot.get_guild(int(GUILD_ID))] if GUILD_ID else list(bot.guilds)
+        guilds = [g for g in guilds if g is not None]
 
     for guild in guilds:
         kicked = 0
@@ -207,7 +210,7 @@ async def on_message(message: discord.Message) -> None:
         if message.author.name.lower() != "nach0ps":
             await message.channel.send("Raja de aca, solo mi creador puede correr ese comando")
             return
-        await nightly_sweep(force=True)
+        await nightly_sweep(force=True, guild=message.guild)
         return
 
     is_next_command = content.startswith("$next") or bot_mentioned

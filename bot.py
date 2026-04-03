@@ -30,6 +30,13 @@ def is_quiet_hours() -> bool:
     return 1 <= now.hour < 6
 
 
+def is_nico(message: discord.Message) -> bool:
+    """Returns True if the message is from nico_1607 or mentions them."""
+    if message.author.name.lower() == "nico_1607":
+        return True
+    return any(m.name.lower() == "nico_1607" for m in message.mentions)
+
+
 def should_skip(member: discord.Member) -> bool:
     """Returns True for the bot itself and the server owner."""
     if member.bot:
@@ -183,19 +190,12 @@ async def on_message(message: discord.Message) -> None:
     content = message.content.strip().lower()
     bot_mentioned = bot.user in message.mentions
 
-    if content == "$p":
-        await message.channel.send("$pelotudo")
+    if is_nico(message):
+        await message.channel.send("_PARALIZADO_")
         return
 
-    if content == "$vieja":
-        target = discord.utils.find(
-            lambda m: m.name.lower() == "mel8402",
-            message.guild.members,
-        )
-        if target:
-            await message.channel.send(f"{target.mention} Te hablan...")
-        else:
-            await message.channel.send("No encuentro a mel8402 en el server.")
+    if content == "$p":
+        await message.channel.send("$pelotudo")
         return
 
     is_next_command = content.startswith("$next") or bot_mentioned

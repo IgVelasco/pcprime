@@ -30,13 +30,6 @@ def is_quiet_hours() -> bool:
     return 1 <= now.hour < 6
 
 
-def is_nico(message: discord.Message) -> bool:
-    """Returns True if the message is from nico_1607 or mentions them."""
-    if message.author.name.lower() == "nico_1607":
-        return True
-    return any(m.name.lower() == "nico_1607" for m in message.mentions)
-
-
 def should_skip(member: discord.Member) -> bool:
     """Returns True for the bot itself and the server owner."""
     return member.bot or member.id == member.guild.owner_id
@@ -182,11 +175,6 @@ _MONTHS_ES = [
 ]
 
 
-async def cmd_nico(message: discord.Message) -> None:
-    nico = next(m for m in [message.author] + list(message.mentions) if m.name.lower() == "nico_1607")
-    await message.channel.send(f"# {nico.mention} _(PARALIZADO)_")
-
-
 async def cmd_kick(message: discord.Message) -> None:
     if message.author.name.lower() != "nach0ps":
         await message.channel.send("Raja de aca, solo mi creador puede correr ese comando")
@@ -212,9 +200,7 @@ async def on_message(message: discord.Message) -> None:
     content = message.content.strip().lower()
     bot_mentioned = bot.user in message.mentions
 
-    if is_nico(message):
-        await cmd_nico(message)
-    elif content == "$p":
+    if content == "$p":
         await message.channel.send("$pelotudo")
     elif content == "$kick":
         await cmd_kick(message)

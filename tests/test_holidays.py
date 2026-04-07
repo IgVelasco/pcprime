@@ -54,10 +54,16 @@ def test_load_holidays_corrupt_json(tmp_path):
 
 def _parse_dates_from_html(html: str, year: int) -> set[tuple[int, int]]:
     """Mirrors the parsing logic inside fetch_argentina_holidays."""
-    raw_dates = re.findall(r'"date":\s*"(\d{1,2}/\d{2}/\d{4})"', html)
     holidays: set[tuple[int, int]] = set()
-    for raw in raw_dates:
-        day, month, yr = raw.split("/")
+    for obj_match in re.finditer(r'\{[^{}]+\}', html):
+        obj = obj_match.group()
+        date_match = re.search(r'"date":\s*"(\d{1,2}/\d{2}/\d{4})"', obj)
+        type_match = re.search(r'"type":\s*"([^"]+)"', obj)
+        if not date_match:
+            continue
+        if type_match and type_match.group(1) == "no_laborable":
+            continue
+        day, month, yr = date_match.group(1).split("/")
         if int(yr) == year:
             holidays.add((int(month), int(day)))
     return holidays
@@ -85,6 +91,16 @@ def test_parse_dates_excludes_other_years():
     result = _parse_dates_from_html(html, 2026)
     assert result == {(12, 25)}
     assert (1, 1) not in result
+
+
+def test_parse_dates_excludes_no_laborable():
+    html = """
+        { "date": "24/03/2026", "label": "Día Nacional de la Memoria", "type": "inamovible" },
+        { "date": "31/03/2026", "label": "Feriado puente", "type": "no_laborable" },
+    """
+    result = _parse_dates_from_html(html, 2026)
+    assert (3, 24) in result
+    assert (3, 31) not in result
 
 
 def test_parse_dates_empty_html():

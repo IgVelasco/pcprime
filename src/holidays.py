@@ -45,10 +45,16 @@ async def fetch_argentina_holidays(year: int) -> tuple[set[tuple[int, int]], boo
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         response = await asyncio.to_thread(urllib.request.urlopen, req, timeout=10)
         html = response.read().decode("utf-8")
-        raw_dates = re.findall(r'"date":\s*"(\d{1,2}/\d{2}/\d{4})"', html)
         holidays: set[tuple[int, int]] = set()
-        for raw in raw_dates:
-            day, month, yr = raw.split("/")
+        for obj_match in re.finditer(r'\{[^{}]+\}', html):
+            obj = obj_match.group()
+            date_match = re.search(r'"date":\s*"(\d{1,2}/\d{2}/\d{4})"', obj)
+            type_match = re.search(r'"type":\s*"([^"]+)"', obj)
+            if not date_match:
+                continue
+            if type_match and type_match.group(1) == "no_laborable":
+                continue
+            day, month, yr = date_match.group(1).split("/")
             if int(yr) == year:
                 holidays.add((int(month), int(day)))
         _holiday_cache[year] = holidays
